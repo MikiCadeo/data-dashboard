@@ -5,8 +5,8 @@ from pathlib import Path
 
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
-    page_title='GDP dashboard',
-    page_icon=':earth_americas:', # This is an emoji shortcode. Could be a URL too.
+    page_title='Cadeo dashboard',
+    page_icon='https://www.cadeo.nl/wp-content/uploads/2023/11/LogoCadeo_logo_Ocean.svg', # This is an emoji shortcode. Could be a URL too.
 )
 
 # -----------------------------------------------------------------------------
@@ -62,13 +62,19 @@ gdp_df = get_gdp_data()
 # -----------------------------------------------------------------------------
 # Draw the actual page
 
+#######################
+# Sidebar
+with st.sidebar:
+    st.title('Cadeo data report')
+    
+    selected_env = st.selectbox('Environment', ["Development", "Production"])
+    df_selected_env = "Development"
+
 # Set the title that appears at the top of the page.
 '''
-# :earth_americas: GDP dashboard
+# Cadeo dashboard
 
-Browse GDP data from the [World Bank Open Data](https://data.worldbank.org/) website. As you'll
-notice, the data only goes to 2022 right now, and datapoints for certain years are often missing.
-But it's otherwise a great (and did I mention _free_?) source of data.
+Description to be updated.
 '''
 
 # Add some spacing
