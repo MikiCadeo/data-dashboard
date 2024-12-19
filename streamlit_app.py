@@ -7,129 +7,80 @@ import pydeck as pdk
 # Set the title and favicon that appear in the Browser's tab bar.
 st.set_page_config(
     page_title='Cadeo dashboard',
-    page_icon='https://www.cadeo.nl/wp-content/uploads/2023/11/LogoCadeo_logo_Ocean.svg', # This is an emoji shortcode. Could be a URL too.
+    page_icon='assets/cadeo-logo-compact.svg'
 )
 
+# Sidebar
+with st.sidebar:
+    st.title('Cadeo data report')
+    st.logo("assets/cadeo-logo.svg")
+    selected_env = st.selectbox('Environment', ["Development", "Production"], 0)
+
 # -----------------------------------------------------------------------------
-# Declare some useful functions.
+# Connect to database and get required data
 
+# Initialize connection.
+conn = st.connection("postgresql", type="sql")
 
-@st.cache_data
-def get_city_data():
-    DATA_FILENAME = Path(__file__).parent/'data/cities.csv'
-    cities_df = pd.read_csv(DATA_FILENAME)
+# Perform query.
+orders_df = conn.query("SELECT * FROM orders_order;", ttl="10m")
+users_df = conn.query("SELECT * FROM users_user;", ttl="10m")
 
-    return cities_df
+# Print results.
+# for order in fulfilmentorders_df.itertuples():
+#    st.write(f"{order.destination_city}")
 
+# -----------------------------------------------------------------------------
+# Helpers
 
-
-@st.cache_data
-def get_order_data():
-    DATA_FILENAME = Path(__file__).parent/'data/orders.csv'
-    raw_orders_df = pd.read_csv(DATA_FILENAME)
-
-    orders_df = raw_orders_df.melt(
-        ['price', 'did_swap', 'method', 'last_update_at', 'city', 'name']
-    )
-    
-    return orders_df
-
-
-def add_coordinates(main_df, city_coords_df):
-    # Create a list of unique cities from the coordinates DataFrame
-    cities = city_coords_df['city'].tolist()
-    
-    # Randomly select cities for each row in the main DataFrame
-    random_cities = np.random.choice(cities, size=len(main_df))
-    
-    # Create a dictionary mapping cities to their coordinates
-    city_coords_dict = dict(zip(city_coords_df['city'], 
-                                zip(city_coords_df['lat'], city_coords_df['lng'])))
-    
-    # Add random city and its coordinates
-    main_df['city'] = random_cities
-    main_df[['latitude', 'longitude']] = main_df['city'].apply(
-        lambda x: pd.Series(city_coords_dict[x])
-    )
-    
-    return main_df
-
-cities_df = get_city_data()
-orders_df = add_coordinates(get_order_data(), cities_df)
-
-st.write(orders_df.drop(columns=['variable', 'value']))
+def get_orders_by_status(status_field, status):
+    return orders_df[orders_df[status_field] == status]
 
 # -----------------------------------------------------------------------------
 # Draw the actual page
 
 #######################
-# Sidebar
-with st.sidebar:
-    st.title('Cadeo data report')
-    
-    selected_env = st.selectbox('Environment', ["Development", "Production"], 1)
 
 # Set the title that appears at the top of the page.
 '''
 # Cadeo dashboard
-
-Description to be updated.
 '''
 
 # Add some spacing
 ''
-''
 
-min_value = orders_df['price'].str.replace('$', '').astype(float).min()
-max_value = orders_df['price'].str.replace('$', '').astype(float).max()
+# Key statistics
+accepted_orders, orders, users = st.columns(3, border=True)
 
-from_year, to_year = st.slider(
-    'Filter orders by price',
-    min_value=min_value,
-    max_value=max_value,
-    value=[min_value, max_value])
+accepted_orders.metric("Accepted orders", len(get_orders_by_status('sender_status', 'accepted')))
+orders.metric("Total orders", len(orders_df))
+users.metric("Number of users", len(users_df))
 
-cities = sorted(orders_df['city'].unique())
+earnings, pending_earnings, donations = st.columns(3, border=True)
 
-if not len(cities):
-    st.warning("Select at least one city")
+earnings.metric("Earnings", '€' + str(round(sum(get_orders_by_status('sender_status', 'accepted')['total_order_price']), 2)))
+pending_earnings.metric("Pending earnings", '€' + str(round(sum(get_orders_by_status('sender_status', 'created')['total_order_price']) + sum(get_orders_by_status('sender_status', 'shared')['total_order_price']), 2)))
+donations.metric("Donations", '€' + str(0))
 
-selected_cities = st.multiselect(
-    'Which city would you like to view?',
-    cities,
-    ["Amsterdam", "Eindhoven", "Haarlem", "Arnhem", "Leiden"])
+with st.expander("Settings"):
+    # Column selection
+    cols = st.multiselect('Columns to show:', orders_df.columns, default=['full_order_number', 'sender_status', 'total_order_price', 'sending_method', 'sender_name'])
 
-''
-''
-''
+    # Price range slider
+    min_order_price = orders_df['total_order_price'].min()
+    max_order_price = orders_df['total_order_price'].max()
 
-st.pydeck_chart(
-    pdk.Deck(
-        map_style=None,
-        initial_view_state=pdk.ViewState(
-            latitude=52.3728,
-            longitude=4.8936,
-            zoom=6,
-            pitch=36,
-        ),
-        layers=[
-            pdk.Layer(
-                "HexagonLayer",
-                data=orders_df,
-                get_position="[longitude, latitude]",
-                radius=200,
-                elevation_scale=4,
-                elevation_range=[0, 1000],
-                pickable=True,
-                extruded=True,
-            ),
-            pdk.Layer(
-                "ScatterplotLayer",
-                data=orders_df,
-                get_position="[longitude, latitude]",
-                get_color="[200, 30, 0, 160]",
-                get_radius=200,
-            ),
-        ],
-    )
-)
+    from_price, to_price = st.slider(
+        'Filter orders by price',
+        min_value=min_order_price,
+        max_value=max_order_price,
+        value=(min_order_price, max_order_price),
+        format='€%.2f')
+
+# Filter and display DataFrame
+filtered_orders_df = orders_df[
+    (orders_df['total_order_price'] >= from_price) & 
+    (orders_df['total_order_price'] <= to_price)
+][cols]
+
+st.write(filtered_orders_df)
